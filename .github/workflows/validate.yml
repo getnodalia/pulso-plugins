@@ -1,0 +1,47 @@
+# Checks index.json on every pull request and push: schema, unique ids, every release's download
+# (size + SHA-256), then installs every package with the real Pulso loader.
+# Lives at .github/workflows/validate.yml in getnodalia/pulso-plugins.
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check out Pulso
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: getnodalia/pulso
+          path: pulso
+
+      # The CLI links the UI crate, which needs these to build (same list as Pulso's CI).
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev \
+            libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev libfreetype-dev libgl1-mesa-dev libasound2-dev
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: pulso
+
+      - name: Build pulso-cli
+        working-directory: pulso
+        run: cargo build -p pulso-cli
+
+      - name: Validate the catalog
+        env:
+          PULSO_CLI: ${{ github.workspace }}/pulso/target/debug/pulso-cli
+        run: bash scripts/validate.sh index.json
